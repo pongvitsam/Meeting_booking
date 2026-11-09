@@ -1,0 +1,54 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Room {
+  id        Int       @id @default(autoincrement())
+  name      String    @unique
+  capacity  Int
+  equipment String    @default("")
+  active    Boolean   @default(true)
+  bookings  Booking[]
+
+  @@map("rooms")
+}
+
+model Booking {
+  id          Int       @id @default(autoincrement())
+  roomId      Int       @map("room_id")
+  room        Room      @relation(fields: [roomId], references: [id])
+  bookerName  String    @map("booker_name")
+  dept        String    @default("")
+  phone       String    @default("")
+  title       String
+  startsAt    DateTime  @map("starts_at")
+  endsAt      DateTime  @map("ends_at")
+  cancelledAt DateTime? @map("cancelled_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  logs        BookingLog[]
+
+  @@index([roomId, startsAt])
+  @@map("bookings")
+}
+
+// บันทึกการแก้ไข/ยกเลิก (ให้แอดมินตรวจสอบย้อนหลัง)
+model BookingLog {
+  id           Int      @id @default(autoincrement())
+  bookingId    Int      @map("booking_id")
+  booking      Booking  @relation(fields: [bookingId], references: [id])
+  action       String // EDIT | CANCEL
+  actorName    String   @map("actor_name")
+  actorIp      String   @default("") @map("actor_ip")
+  bookingTitle String   @map("booking_title")
+  changes      String   @default("[]") // JSON: [{label, from, to}]
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("booking_logs")
+}
