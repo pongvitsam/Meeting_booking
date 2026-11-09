@@ -13,7 +13,7 @@ import {
   isAdmin,
 } from "./admin-auth";
 import { addOwned } from "./ownership";
-import { diffBooking, writeLog } from "./booking-log";
+import { buildLog, diffBooking } from "./booking-log";
 
 export type FormState =
   | { error?: string; fieldErrors?: Record<string, string>; values?: Record<string, string> }
@@ -82,9 +82,8 @@ export async function updateBookingAction(_: FormState, fd: FormData): Promise<F
     return keep(fd, { error: "ห้ามย้ายการจองไปเวลาย้อนหลัง", fieldErrors: { start: "ห้ามย้ายการจองไปเวลาย้อนหลัง" } });
   }
   try {
-    await updateBooking(id, parsed.data);
     const changes = diffBooking(old, parsed.data);
-    if (changes.length) await writeLog("EDIT", { id, title: old.title }, actor, changes);
+    await updateBooking(id, parsed.data, changes.length ? await buildLog("EDIT", old, actor, changes) : undefined);
   } catch (e) {
     if (e instanceof OverlapError) return keep(fd, { error: e.message });
     return keep(fd, { error: e instanceof Error ? e.message : "เกิดข้อผิดพลาด" });
@@ -93,14 +92,18 @@ export async function updateBookingAction(_: FormState, fd: FormData): Promise<F
   redirect(`/?m=${parsed.data.date.slice(0, 7)}&b=${id}&updated=1`);
 }
 
-export async function cancelBookingAction(fd: FormData) {
+// ยกเลิกพร้อมบันทึก log (ถ้าถูกยกเลิกไปแล้วถือว่าสำเร็จ เพื่อไม่ให้หน้าจอค้าง)
+async function cancelWithLog(fd: FormData, actorLabel: (name: string) => string) {
   const id = Number(str(fd, "id"));
   const actor = str(fd, "actorName").trim();
   const old = await prisma.booking.findUnique({ where: { id } });
-  if (!actor || !old || old.cancelledAt) return;
-  await cancelBooking(id);
-  await writeLog("CANCEL", { id, title: old.title }, actor);
+  if (old && !old.cancelledAt) await cancelBooking(id, await buildLog("CANCEL", old, actorLabel(actor)));
   revalidatePath("/", "layout");
+}
+
+export async function cancelBookingAction(fd: FormData) {
+  if (!str(fd, "actorName").trim()) return;
+  await cancelWithLog(fd, (n) => n);
   redirect("/?cancelled=1");
 }
 
@@ -146,11 +149,5 @@ export async function toggleRoomAction(fd: FormData) {
 
 export async function adminCancelAction(fd: FormData) {
   if (!(await isAdmin())) return;
-  const id = Number(str(fd, "id"));
-  const old = await prisma.booking.findUnique({ where: { id } });
-  if (!old || old.cancelledAt) return;
-  await cancelBooking(id);
-  const who = str(fd, "actorName").trim();
-  await writeLog("CANCEL", { id, title: old.title }, who ? `แอดมิน (${who})` : "แอดมิน");
-  revalidatePath("/", "layout");
+  await cancelWithLog(fd, (n) => (n ? `แอดมิน (${n})` : "แอดมิน"));
 }

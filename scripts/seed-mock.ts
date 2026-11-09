@@ -45,12 +45,14 @@ function rng(seed: number) {
 }
 
 async function clearMock() {
-  const r = await prisma.booking.deleteMany({
-    where: {
-      title: { in: TITLES },
-      bookerName: { in: PEOPLE.map((p) => p.name) },
-    },
-  });
+  const where = {
+    title: { in: TITLES },
+    bookerName: { in: PEOPLE.map((p) => p.name) },
+  };
+  // log ที่อ้างอิงการจองต้องลบก่อน (foreign key)
+  const ids = (await prisma.booking.findMany({ where, select: { id: true } })).map((b) => b.id);
+  await prisma.bookingLog.deleteMany({ where: { bookingId: { in: ids } } });
+  const r = await prisma.booking.deleteMany({ where });
   console.log(`ลบข้อมูลตัวอย่าง ${r.count} รายการ`);
 }
 

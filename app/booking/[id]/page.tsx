@@ -33,7 +33,7 @@ export default async function BookingPage({
 
   return (
     <div className="mx-auto max-w-2xl space-y-4">
-      {sp.created && <p className="alert-ok">จองสำเร็จแล้ว 🎉 คุณแก้ไขหรือยกเลิกการจองนี้ได้จากเบราว์เซอร์นี้</p>}
+      {sp.created && <p className="alert-ok">จองสำเร็จแล้ว 🎉 คลิกที่การจองในปฏิทินเพื่อดูรายละเอียด แก้ไข หรือยกเลิกได้</p>}
       {sp.updated && <p className="alert-ok">แก้ไขการจองเรียบร้อยแล้ว</p>}
 
       <div className="card overflow-hidden">

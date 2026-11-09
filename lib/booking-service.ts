@@ -1,6 +1,7 @@
 import { prisma } from "./db";
 import { bangkokToDate } from "./time";
 import type { BookingInput } from "./validators";
+import type { LogData } from "./booking-log";
 
 export class OverlapError extends Error {
   constructor() {
@@ -50,12 +51,12 @@ export async function createBooking(input: BookingInput) {
   }
 }
 
-export async function updateBooking(id: number, input: BookingInput) {
+export async function updateBooking(id: number, input: BookingInput, log?: LogData) {
   await assertRoom(input.roomId);
   const startsAt = bangkokToDate(input.date, input.start);
   const endsAt = bangkokToDate(input.date, input.end);
   try {
-    return await prisma.booking.update({
+    const update = prisma.booking.update({
       where: { id },
       data: {
         roomId: input.roomId,
@@ -67,12 +68,19 @@ export async function updateBooking(id: number, input: BookingInput) {
         endsAt,
       },
     });
+    // แก้ไขกับ log สำเร็จหรือล้มเหลวพร้อมกัน
+    if (!log) return await update;
+    const [updated] = await prisma.$transaction([update, prisma.bookingLog.create({ data: { bookingId: id, ...log } })]);
+    return updated;
   } catch (e) {
     if (await hasOverlap(input.roomId, startsAt, endsAt, id)) throw new OverlapError();
     throw e;
   }
 }
 
-export async function cancelBooking(id: number) {
-  await prisma.booking.update({ where: { id }, data: { cancelledAt: new Date() } });
+export async function cancelBooking(id: number, log: LogData) {
+  await prisma.$transaction([
+    prisma.booking.update({ where: { id }, data: { cancelledAt: new Date() } }),
+    prisma.bookingLog.create({ data: { bookingId: id, ...log } }),
+  ]);
 }

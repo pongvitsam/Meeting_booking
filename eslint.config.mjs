@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // สคริปต์ CommonJS ที่รันบน server ตอนติดตั้ง ไม่ใช่โค้ดของแอป
+    "deploy/**",
+    "release/**",
   ]),
 ]);
 

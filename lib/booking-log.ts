@@ -1,6 +1,5 @@
 import "server-only";
 import { headers } from "next/headers";
-import { prisma } from "./db";
 import { fmtTime, toBangkokParts } from "./time";
 import { formatThaiDate } from "./thai";
 import type { BookingInput } from "./validators";
@@ -17,9 +16,13 @@ type Row = {
   endsAt: Date;
 };
 
+// IP ของผู้ใช้: x-client-ip ถูกตั้งทับโดย deploy/ip-header.cjs จาก socket จริง (ปลอมไม่ได้)
+// ถ้าไม่มี (เช่น dev) ใช้ค่าสุดท้ายใน x-forwarded-for ซึ่งเป็นค่าที่ proxy (IIS/ARR) ต่อท้ายให้
 async function clientIp() {
   const h = await headers();
-  return (h.get("x-forwarded-for")?.split(",")[0] ?? h.get("x-real-ip") ?? "").trim();
+  const direct = h.get("x-client-ip");
+  const fwd = h.get("x-forwarded-for")?.split(",").pop();
+  return (direct ?? fwd ?? "").trim().replace(/^::ffff:/, "");
 }
 
 // เทียบข้อมูลเดิมกับข้อมูลใหม่ คืนเฉพาะช่องที่เปลี่ยน
@@ -37,20 +40,26 @@ export function diffBooking(old: Row, next: BookingInput): Change[] {
   return pairs.filter(([, a, b]) => a !== b).map(([label, from, to]) => ({ label, from, to }));
 }
 
-export async function writeLog(
+// ข้อมูลแถว log (เขียนพร้อมการเปลี่ยนแปลงในธุรกรรมเดียวกัน ดู booking-service)
+export type LogData = {
+  action: "EDIT" | "CANCEL";
+  bookingTitle: string;
+  actorName: string;
+  actorIp: string;
+  changes: string;
+};
+
+export async function buildLog(
   action: "EDIT" | "CANCEL",
-  booking: { id: number; title: string },
+  booking: { title: string },
   actorName: string,
   changes: Change[] = [],
-) {
-  await prisma.bookingLog.create({
-    data: {
-      bookingId: booking.id,
-      action,
-      actorName: actorName.trim().slice(0, 100),
-      actorIp: await clientIp(),
-      bookingTitle: booking.title,
-      changes: JSON.stringify(changes),
-    },
-  });
+): Promise<LogData> {
+  return {
+    action,
+    bookingTitle: booking.title,
+    actorName: actorName.trim().slice(0, 100),
+    actorIp: await clientIp(),
+    changes: JSON.stringify(changes),
+  };
 }

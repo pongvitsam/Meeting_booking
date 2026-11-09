@@ -60,7 +60,7 @@ export default async function Home({
   return (
     <div className="space-y-4">
       {sp.cancelled && <p className="alert-ok">ยกเลิกการจองเรียบร้อยแล้ว</p>}
-      {sp.created && <p className="alert-ok">จองสำเร็จแล้ว 🎉 คุณแก้ไขหรือยกเลิกการจองนี้ได้จากเบราว์เซอร์นี้</p>}
+      {sp.created && <p className="alert-ok">จองสำเร็จแล้ว 🎉 คลิกที่การจองในปฏิทินเพื่อดูรายละเอียด แก้ไข หรือยกเลิกได้</p>}
       {sp.updated && <p className="alert-ok">แก้ไขการจองเรียบร้อยแล้ว</p>}
 
       <div className="flex flex-wrap items-center gap-3">
