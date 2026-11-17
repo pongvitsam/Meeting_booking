@@ -12,6 +12,12 @@ function Run($cmd) {
   if ($code -ne 0) { throw "ล้มเหลว: $cmd" }
 }
 
+$pkgVer = (Get-Content package.json -Raw | ConvertFrom-Json).version
+# ใน CI: tag (เช่น v1.2.0) ต้องตรงกับ version ใน package.json กันปล่อยเวอร์ชันผิด
+if ($env:GITHUB_REF_NAME -match '^v(.+)$' -and $Matches[1] -ne $pkgVer) {
+  throw "tag $($env:GITHUB_REF_NAME) ไม่ตรงกับ version $pkgVer ใน package.json"
+}
+
 Run "npm ci"
 Run "npx prisma generate"
 Run "npm run build"
@@ -34,12 +40,16 @@ Run "npx prisma generate --schema prisma\schema.prisma"
 Pop-Location
 
 # สคริปต์ติดตั้ง/รัน
-foreach ($f in "install.ps1", "uninstall.ps1", "run-server.ps1", "run-backup.ps1", "load-env.ps1", "ip-header.cjs", "init-db.cjs", "backup-db.cjs") {
+foreach ($f in "install.ps1", "uninstall.ps1", "update.ps1", "restore.ps1", "run-server.ps1", "run-backup.ps1", "load-env.ps1", "ip-header.cjs", "init-db.cjs", "backup-db.cjs") {
   Copy-Item "deploy\$f" "$out\$f"
 }
+
+[IO.File]::WriteAllText("$out\VERSION", $pkgVer, (New-Object Text.UTF8Encoding($false)))
 
 $zip = Join-Path (Get-Location) "release.zip"
 if (Test-Path $zip) { Remove-Item -Force $zip }
 Compress-Archive -Path "$out\*" -DestinationPath $zip
-Write-Host "`nเสร็จแล้ว: $out และ $zip"
+$hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+[IO.File]::WriteAllText("$zip.sha256", "$hash  release.zip`n", (New-Object Text.UTF8Encoding($false)))
+Write-Host "`nเสร็จแล้ว: เวอร์ชัน $pkgVer  $out และ $zip (sha256 $hash)"
 Write-Host "บน server: แตก zip -> เปิด PowerShell (Run as administrator) -> .\install.ps1"

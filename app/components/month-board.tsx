@@ -28,8 +28,8 @@ export default function MonthBoard({
   const close = () => setSelectedId(null);
 
   return (
-    <>
-      <div className="card overflow-hidden">
+    <div className="lg:flex lg:items-start lg:gap-4">
+      <div className="card min-w-0 flex-1 overflow-hidden">
         <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50">
           {THAI_DAYS_SHORT.map((d, i) => (
             <div
@@ -124,7 +124,7 @@ export default function MonthBoard({
         ))}
       </div>
 
-      <BookingDrawer booking={selected} onClose={close} />
-    </>
+      <BookingDrawer booking={selected} onClose={close} inline />
+    </div>
   );
 }

@@ -10,11 +10,21 @@ param(
   [string] $RoomName = "ห้องประชุม",
   [int] $RoomCapacity = 20,
   [string] $AdminPassword,
-  [int] $BackupKeepDays = 30
+  [int] $BackupKeepDays = 30,
+  [string] $BackupCopyTo = "",          # ก๊อปไฟล์สำรองไป drive กลาง เช่น \\fileserver\backup\meeting
+  [switch] $AutoUpdate,                 # เช็กและติดตั้งเวอร์ชันใหม่จาก GitHub ทุกคืน (ไม่ใส่ = ไม่เปลี่ยนค่าเดิม)
+  [int] $UpdateHour = 3,                # ชั่วโมงที่เช็กอัปเดต (นอกเวลาทำการ)
+  [switch] $NoPrompt                    # ไม่ถามอะไร (ใช้ตอนอัปเดตอัตโนมัติ) ต้องมี .env อยู่แล้ว
 )
 $ErrorActionPreference = "Stop"
 $src = $PSScriptRoot
 . (Join-Path $src "load-env.ps1")
+
+# ถ้าไม่ได้ระบุ -Port และเคยติดตั้งแล้ว ให้ใช้พอร์ตเดิมจาก .env (ไม่ให้ตอนอัปเกรดรีเซ็ตกลับเป็น 80)
+if (-not $PSBoundParameters.ContainsKey("Port") -and (Test-Path (Join-Path $Root ".env"))) {
+  $m = Select-String -Path (Join-Path $Root ".env") -Pattern '^PORT=(\d+)' | Select-Object -First 1
+  if ($m) { $Port = [int]$m.Matches[0].Groups[1].Value }
+}
 
 function Step($t) { Write-Host "`n==> $t" -ForegroundColor Cyan }
 
@@ -50,13 +60,20 @@ Start-Sleep -Seconds 2
 # --- คัดลอกไฟล์ ---
 Step "คัดลอกไฟล์ไป $app"
 foreach ($d in @($Root, $app, $data, $logs, $backup)) { New-Item -ItemType Directory -Force $d | Out-Null }
+# แหล่งบันทึกเหตุการณ์ใน Windows Event Viewer (Application > MeetingBooking)
+if (-not [Diagnostics.EventLog]::SourceExists("MeetingBooking")) { New-EventLog -LogName Application -Source "MeetingBooking" }
 robocopy $src $app /MIR /NFL /NDL /NJH /NJS /NP /XF install.ps1 uninstall.ps1 .env | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "คัดลอกไฟล์ไม่สำเร็จ (robocopy exit $LASTEXITCODE)" }
 Copy-Item (Join-Path $src "install.ps1"), (Join-Path $src "uninstall.ps1") $app -Force -ErrorAction SilentlyContinue
+# สคริปต์ดูแลระบบอยู่นอกโฟลเดอร์ app (เพราะ app ถูกเขียนทับตอนอัปเกรด)
+foreach ($f in "update.ps1", "restore.ps1", "load-env.ps1") {
+  if (Test-Path (Join-Path $src $f)) { Copy-Item (Join-Path $src $f) $Root -Force }
+}
 
 # --- .env ---
 Step "ตั้งค่า .env"
 if (-not (Test-Path $envFile)) {
+  if (-not $AdminPassword -and $NoPrompt) { throw "ไม่พบ $envFile และไม่ได้ระบุ -AdminPassword (โหมด -NoPrompt ถามไม่ได้)" }
   if (-not $AdminPassword) {
     $sec = Read-Host "ตั้งรหัสผ่านแอดมิน (อย่างน้อย 8 ตัวอักษร)" -AsSecureString
     $AdminPassword = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec))
@@ -83,6 +100,12 @@ if (-not (Test-Path $envFile)) {
   $t = Get-Content $envFile -Raw
   if ($t -match '(?m)^PORT=') { $t = $t -replace '(?m)^PORT=.*$', "PORT=$Port" } else { $t = $t.TrimEnd() + "`r`nPORT=$Port`r`n" }
   [IO.File]::WriteAllText($envFile, $t, (New-Object Text.UTF8Encoding($false)))
+}
+# ที่เก็บสำรองบน drive กลาง: จำไว้ใน .env เพื่อให้คงอยู่ตอนอัปเกรด
+if ($BackupCopyTo) {
+  $keep = @(Get-Content $envFile -Encoding UTF8 | Where-Object { $_ -notmatch '^BACKUP_COPY_TO=' })
+  $keep += "BACKUP_COPY_TO=`"$BackupCopyTo`""
+  [IO.File]::WriteAllText($envFile, (($keep -join "`r`n") + "`r`n"), (New-Object Text.UTF8Encoding($false)))
 }
 Import-DotEnv $envFile
 
@@ -116,11 +139,23 @@ Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Pr
 
 # --- สำรองฐานข้อมูลทุกคืน 02:00 ---
 $bArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$app\run-backup.ps1`" -AppDir `"$app`" -EnvFile `"$envFile`" -BackupDir `"$backup`" -KeepDays $BackupKeepDays -NodePath `"$nodePath`""
+if ($env:BACKUP_COPY_TO) { $bArgs += " -CopyTo `"$($env:BACKUP_COPY_TO)`"" }
 Register-ScheduledTask -TaskName $backupTask -Force `
   -Action (New-ScheduledTaskAction -Execute $ps -Argument $bArgs -WorkingDirectory $app) `
   -Trigger (New-ScheduledTaskTrigger -Daily -At 2:00AM) -Principal $principal `
   -Settings (New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 1)) `
   -Description "สำรองฐานข้อมูลระบบจองห้องประชุมทุกคืน" | Out-Null
+
+# --- อัปเดตอัตโนมัติจาก GitHub (เลือกเปิดเอง) ---
+if ($AutoUpdate) {
+  $uArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$Root\update.ps1`" -Root `"$Root`""
+  Register-ScheduledTask -TaskName "MeetingBooking-Update" -Force `
+    -Action (New-ScheduledTaskAction -Execute $ps -Argument $uArgs -WorkingDirectory $Root) `
+    -Trigger (New-ScheduledTaskTrigger -Daily -At ([datetime]::Today.AddHours($UpdateHour))) -Principal $principal `
+    -Settings (New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 2)) `
+    -Description "เช็กและติดตั้งเวอร์ชันใหม่ของระบบจองห้องประชุมจาก GitHub" | Out-Null
+  Write-Host "เปิดอัปเดตอัตโนมัติ: ทุกคืนเวลา ${UpdateHour}:00"
+}
 
 # --- Firewall: เปิดเฉพาะวง LAN ---
 Step "เปิด Firewall พอร์ต $Port เฉพาะวง LAN"
@@ -135,19 +170,20 @@ $ok = $false
 for ($i = 0; $i -lt 40; $i++) {
   Start-Sleep -Seconds 1
   try {
-    $r = Invoke-WebRequest -Uri "http://127.0.0.1:$Port/" -UseBasicParsing -TimeoutSec 3
+    $r = Invoke-WebRequest -Uri "http://127.0.0.1:$Port/api/health" -UseBasicParsing -TimeoutSec 3
     if ($r.StatusCode -eq 200) { $ok = $true; break }
   } catch { }
 }
 if (-not $ok) {
   Write-Host "ระบบยังไม่ตอบสนอง ดู log: $logs\server.log" -ForegroundColor Yellow
-  if (Test-Path "$logs\server.log") { Get-Content "$logs\server.log" -Tail 20 }
+  foreach ($lf in "server.log", "node-error.log") { if (Test-Path "$logs\$lf") { Write-Host "--- $lf"; Get-Content "$logs\$lf" -Tail 15 } }
   exit 1
 }
 
 $ip = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -notlike "127.*" -and $_.IPAddress -notlike "169.254.*" } | Select-Object -First 1).IPAddress
 $suffix = if ($Port -eq 80) { "" } else { ":$Port" }
-Write-Host "`nติดตั้งเสร็จแล้ว และระบบทำงานอยู่" -ForegroundColor Green
+$ver = if (Test-Path "$app\VERSION") { (Get-Content "$app\VERSION" -Raw).Trim() } else { "?" }
+Write-Host "`nติดตั้งเสร็จแล้ว (เวอร์ชัน $ver) และระบบทำงานอยู่" -ForegroundColor Green
 Write-Host "  เปิดใช้งาน : http://$ip$suffix/   หรือ  http://$env:COMPUTERNAME$suffix/"
 Write-Host "  แอดมิน     : http://$ip$suffix/admin/login"
 Write-Host "  ข้อมูล     : $data   (สำรองทุกคืนที่ $backup)"

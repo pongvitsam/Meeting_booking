@@ -4,7 +4,7 @@ param(
   [switch] $RemoveData
 )
 $ErrorActionPreference = "Continue"
-foreach ($t in @("MeetingBooking", "MeetingBooking-Backup")) {
+foreach ($t in @("MeetingBooking", "MeetingBooking-Backup", "MeetingBooking-Update")) {
   if (Get-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue) {
     Stop-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue
     Unregister-ScheduledTask -TaskName $t -Confirm:$false
@@ -16,6 +16,7 @@ Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction Silen
   Where-Object { $_.CommandLine -like "*run-server.ps1*" } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
 Get-NetFirewallRule -DisplayName "MeetingBooking" -ErrorAction SilentlyContinue | Remove-NetFirewallRule
 Remove-Item -Recurse -Force (Join-Path $Root "app") -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force (Join-Path $Root "app.prev") -ErrorAction SilentlyContinue
 if ($RemoveData) {
   Remove-Item -Recurse -Force $Root
   Write-Host "ลบทั้งหมดรวมข้อมูลแล้ว"

@@ -1,0 +1,28 @@
+# ติด tag เช่น v1.2.0 (ต้องตรงกับ version ใน package.json) แล้ว workflow นี้จะ build
+# release.zip + release.zip.sha256 และแนบเป็น GitHub Release ให้ server ดึงไปติดตั้ง (deploy/update.ps1)
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Build release
+        shell: pwsh
+        run: ./deploy/build-release.ps1
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" release.zip release.zip.sha256 --title "${{ github.ref_name }}" --generate-notes

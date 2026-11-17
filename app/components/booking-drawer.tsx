@@ -19,9 +19,12 @@ function Row({ label, value }: { label: string; value: string }) {
 export default function BookingDrawer({
   booking,
   onClose,
+  inline = false,
 }: {
   booking: BookingDTO | null;
   onClose: () => void;
+  // inline: บนจอกว้างวางเป็นแผงข้างปฏิทิน (ไม่ทับ) / จอแคบยังเป็นแผงเลื่อนทับ
+  inline?: boolean;
 }) {
   useEffect(() => {
     if (!booking) return;
@@ -35,14 +38,18 @@ export default function BookingDrawer({
   return (
     <>
       <div
-        className="fixed inset-0 z-40 bg-slate-900/30 lg:hidden"
+        className={`fixed inset-0 z-40 bg-slate-900/30 ${inline ? "lg:hidden" : ""}`}
         onClick={onClose}
         aria-hidden
       />
       <aside
         role="dialog"
         aria-label="รายละเอียดการจอง"
-        className="drawer-in fixed top-0 right-0 z-50 flex h-full w-full max-w-md flex-col bg-white shadow-2xl lg:border-l lg:border-slate-200"
+        className={`drawer-in fixed top-0 right-0 z-50 flex h-full w-full max-w-md flex-col bg-white shadow-2xl ${
+          inline
+            ? "lg:sticky lg:top-20 lg:z-10 lg:h-[calc(100vh-6.5rem)] lg:w-96 lg:max-w-none lg:shrink-0 lg:overflow-hidden lg:rounded-2xl lg:border lg:border-slate-200 lg:shadow-lg"
+            : "lg:border-l lg:border-slate-200"
+        }`}
       >
         <div className="flex items-start gap-3 bg-gradient-to-r from-indigo-600 to-violet-600 px-6 py-5 text-white">
           <div className="min-w-0 flex-1">

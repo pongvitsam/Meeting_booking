@@ -11,12 +11,12 @@
     "db:seed": "tsx prisma/seed.ts",
     "postinstall": "prisma generate",
     "test:concurrency": "tsx scripts/test-concurrency.ts",
+    "test:migrations": "tsx scripts/test-migrations.ts",
     "mock:seed": "tsx scripts/seed-mock.ts",
     "mock:clear": "tsx scripts/seed-mock.ts --clear"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
-    "bcryptjs": "^3.0.3",
     "jose": "^6.2.16",
     "next": "16.4.5",
     "react": "19.3.0",
@@ -26,7 +26,6 @@
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",
-    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

@@ -50,6 +50,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           </nav>
         </header>
         <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>
+        <footer className="mx-auto max-w-7xl px-4 pb-6 text-center text-xs text-slate-400">
+          ระบบจองห้องประชุม v{process.env.APP_VERSION} Organized by Pongvitsam
+        </footer>
       </body>
     </html>
   );

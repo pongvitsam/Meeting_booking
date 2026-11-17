@@ -1,0 +1,35 @@
+# ตรวจโค้ดทุกครั้งที่ push/PR: type check, lint, build, migration และการกันจองซ้อน
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: windows-latest
+    env:
+      DATABASE_URL: "file:./ci.db?connection_limit=1"
+      ADMIN_PASSWORD: ci-password-123
+      SESSION_SECRET: ci-session-secret-ci-session-secret-0123456789
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm run lint
+      - run: npm run build
+      - name: Migrations และ trigger กันจองซ้อน
+        run: npm run test:migrations
+      - name: จองพร้อมกัน 10 ครั้ง ต้องสำเร็จ 1
+        run: |
+          npx prisma migrate deploy
+          npm run db:seed
+          npm run test:concurrency
+      - name: npm audit (เตือนอย่างเดียว)
+        run: npm audit --omit=dev
+        continue-on-error: true
